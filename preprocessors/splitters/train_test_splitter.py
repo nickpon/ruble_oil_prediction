@@ -8,12 +8,11 @@ class TrainTestSplitter(Splitter):
             self,
             train_size: int,
             dataset: np.ndarray,
+            max_pred_horizon: int,
+            max_train_horizon: int,
             use_tqdm: bool = True,
-            max_pred_horizon: int = 28,
-            max_train_horizon: int = 30,
     ):
         """
-
         Splits into train and test part by train_size.
 
         x_train = [train_size, max_train_horizon, d_size],
@@ -31,14 +30,13 @@ class TrainTestSplitter(Splitter):
             Others will be stored in test part.
         :param dataset: np.ndarray
             Initial dataset to be splitted.
-        :param use_tqdm: bool
-            Flag that indicates whether one
-            should use tqdm progress bars or not.
         :param max_pred_horizon: int
             Number of maximum prediction horizon for each period of time.
         :param max_train_horizon:
             Number of maximum train horizon for each period of time.
-
+        :param use_tqdm: bool, [default=True]
+            Flag that indicates whether one
+            should use tqdm progress bars or not.
         """
 
         super().__init__(

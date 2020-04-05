@@ -1,9 +1,9 @@
-/experiments/.ipynb_checkpoints/
+/experiments.ipynb_checkpoints/
 /projects.egg-info/
 .DS_Store
 .idea/
 __pycache__/
-experiments/
 preprocessors/scalers/__pycache__/
 preprocessors/splitters/__pycache__/
-
+/experiments/catboost_info/
+/experiments/.ipynb_checkpoints/

@@ -16,14 +16,25 @@ class Preprocessor:
     def __init__(
             self,
             dataset: np.ndarray,
-            max_pred_horizon: int = 28,
-            max_train_horizon: int = 30,
-            d_size: int = 5,
+            max_pred_horizon: int,
+            max_train_horizon: int,
+            d_size: int,
     ):
         """
-        Base class for preprocessor.
+        Preprocessor class that makes data splits and scaling over the dataset
+        give.
 
+        :param dataset: np.ndarray
+            Dataset to preprocess.
+            dataset = [num_of_observation, d_size]
+        :param max_pred_horizon: int
+            Number of maximum prediction horizon for each period of time.
+        :param max_train_horizon:
+            Number of maximum train horizon for each period of time.
+        :param d_size:
+            Dimensions (number of rows) to explore.
         """
+
         self.dataset = dataset[:, :d_size]
         self.max_pred_horizon = max_pred_horizon
         self.max_train_horizon = max_train_horizon
@@ -40,22 +51,18 @@ class Preprocessor:
 
     def get_scaled_dataset(self) -> np.ndarray:
         """
-
         Returns scaled dataset if scale was used, else returns initial dataset.
 
         :return: np.ndarray
-
         """
 
         return self.dataset
 
     def get_initial_dataset(self) -> np.ndarray:
         """
-
         Returns initial dataset.
 
         :return: np.ndarray
-
         """
 
         if self.scaler is None:
@@ -64,11 +71,10 @@ class Preprocessor:
 
     def plot_row(self, row: int):
         """
-
         Plots row of the initial dataset.
+
         :param row: int
             Index of the row to plot.
-
         """
 
         plt.title('{} row'.format(str(row)))
@@ -81,12 +87,11 @@ class Preprocessor:
 
     def get_train_dataloader(self, train_batch_size: int = 128) -> DataLoader:
         """
-
         Form torch Dataloder on train data.
-        :param train_batch_size: int
+
+        :param train_batch_size: int, [default=128]
             Batch-size to use in Dataloder.
         :return: DataLoader
-
         """
 
         return DataLoader(
@@ -97,12 +102,11 @@ class Preprocessor:
 
     def get_val_dataloader(self, val_batch_size: int = 128) -> DataLoader:
         """
-
         Form torch Dataloder on train data.
-        :param val_batch_size: int
+
+        :param val_batch_size: int, [default=128]
             Batch-size to use in Dataloder.
         :return: DataLoader
-
         """
 
         return DataLoader(
@@ -113,12 +117,11 @@ class Preprocessor:
 
     def get_test_dataloader(self, test_batch_size: int = 128) -> DataLoader:
         """
-
         Form torch Dataloder on train data.
-        :param test_batch_size: int
+
+        :param test_batch_size: int, [default=128]
             Batch-size to use in Dataloder.
         :return: DataLoader
-
         """
 
         return DataLoader(
@@ -130,25 +133,23 @@ class Preprocessor:
     def train_test_split(
             self,
             train_size: int,
-            scaler: Optional[BaseScaler],
+            scaler: Optional[BaseScaler] = None,
             use_tqdm: bool = True,
     ):
         """
-
         Splits dataset into train and test part by train_size.
         Stores results in x_train, y_train, x_test, y_test field respectively.
 
         :param train_size: int
             First train_size number of observations to keep in training part.
             Others will be stored in test part.
-        :param scaler: Optional[BaseScaler]
+        :param scaler: Optional[BaseScaler], [default=None]
             Instance of child-class of BaseScaler or None.
             If None, no transformation is performed, else transformation is
             performed with transform() method of the instance given.
-        :param use_tqdm: bool
+        :param use_tqdm: bool, [default=True]
             Flag that indicates whether one
             should use tqdm progress bars or not.
-
         """
 
         if scaler is not None:
@@ -173,7 +174,6 @@ class Preprocessor:
             use_tqdm: bool = True,
     ):
         """
-
         Splits dataset into train and test part by train_size.
         Stores results in x_train, y_train, x_test, y_test field respectively.
 
@@ -186,10 +186,9 @@ class Preprocessor:
             Instance of child-class of BaseScaler or None.
             If None, no transformation is performed, else transformation is
             performed with transform() method of the instance given.
-        :param use_tqdm: bool
+        :param use_tqdm: bool, [default=True]
             Flag that indicates whether one
             should use tqdm progress bars or not.
-
         """
 
         if scaler is not None:

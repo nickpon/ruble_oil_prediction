@@ -4,13 +4,12 @@ import numpy as np
 class BaseScaler:
     def __init__(self, train_size: int):
         """
-
         Base scaler class.
 
         :param train_size: int
             First train_size number of observations to fit on.
-
         """
+
         self.train_size = train_size
         self.params = {}
 
