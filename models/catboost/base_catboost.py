@@ -9,7 +9,7 @@ def construct_params(
 ) -> Dict[str, Any]:
     if params is None:
         params = {}
-    if 'verbose' not in params:
+    if 'verbose' not in params and 'silent' not in params:
         params['verbose'] = 100
     if use_gpu:
         params['task_type'] = 'GPU'

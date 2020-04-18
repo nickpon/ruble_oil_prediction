@@ -9,23 +9,30 @@ from models.catboost.base_catboost import BaseCatBoostModel
 class MultiCatBoost(BaseCatBoostModel):
     def __init__(
             self,
+            loss_function: str = 'MultiRMSE',
             use_gpu: bool = False,
             params: Optional[Dict[str, Any]] = None,
+            **kwarg,
     ):
         """
         Implementation of the scikit-learn API for CatBoost regression for
         multitarget prediction.
 
+        Note: MultiRMSE stands to be the only function that is supported
+        for multitarget task.
+
+        :param loss_function: str
+            Only MultiRMSE is supported.
         :param use_gpu: bool, [default=False]
             Flag that indicates whether use use_gpu or not.
         :param params: Optional[Dict[str, Any]], [default=None]
             Dict that contains parameters for CatBoostRegressor.
         """
 
-        # The only function that is supported for multitarget task.
-        loss_function = 'MultiRMSE'
+        if loss_function != 'MultiRMSE':
+            raise ValueError('Loss function ought to be only MultiRMSE.')
         super().__init__(
-            use_gpu=use_gpu, loss_function=loss_function, params=params,
+            use_gpu=use_gpu, loss_function='MultiRMSE', params=params,
         )
 
     def fit(
@@ -39,37 +46,32 @@ class MultiCatBoost(BaseCatBoostModel):
         Fit CatBoost Model.
 
         :param x_train: np.ndarray
-            x_train = [train_size, max_train_horizon, d_size]
+            x_train = [train_size, num_of_features]
         :param y_train: np.ndarray
-            y_train = [train_size, max_pred_horizon, d_size]
+            y_train = [train_size, pred_horizon]
         :param x_val: np.ndarray
-            x_val = [val_size, max_train_horizon, d_size]
+            x_val = [val_size, num_of_features]
         :param y_val: np.ndarray
-            y_val = [val_size, max_pred_horizon, d_size]
-        :return:
+            y_val = [val_size, pred_horizon]
         """
 
         eval_set = (
-            (x_val[:, 0, :], y_val[:, 0, :])
-            if x_val is not None or y_val is not None
-            else None
+            (x_val, y_val) if x_val is not None or y_val is not None else None
         )
 
-        self.regressor.fit(
-            X=x_train[:, 0, :], y=y_train[:, 0, :], eval_set=eval_set,
-        )
+        self.regressor.fit(X=x_train, y=y_train, eval_set=eval_set)
 
     def predict(self, x_test: np.ndarray) -> np.ndarray:
         """
         Prediction by trained CatBoost model.
 
         :param x_test: np.ndarray
-            x_test = [test_size, max_train_horizon, d_size]
+            x_test = [test_size, num_of_features]
         :return: np.ndarray
-            prediction = [test_size, d_size]
+            prediction = [test_size, pred_horizon]
         """
 
-        return self.regressor.predict(x_test[:, 0, :])
+        return self.regressor.predict(x_test)
 
 
 class GreedyMultiCatBoost(BaseCatBoostModel):
@@ -79,6 +81,7 @@ class GreedyMultiCatBoost(BaseCatBoostModel):
             loss_function: str = 'RMSE',
             use_gpu: bool = False,
             params: Optional[Dict[str, Any]] = None,
+            **kwarg,
     ):
         """
         Greedy multitarget implementation (create independent regressor
@@ -86,6 +89,8 @@ class GreedyMultiCatBoost(BaseCatBoostModel):
 
         :param dimension: int
             Number of rows to predict.
+        :param loss_function: str
+            Every loss function supported bu common CatBoostRegressor.
         :param use_gpu: bool, [default=False]
             Flag that indicates whether use use_gpu or not.
         :param params: Optional[Dict[str, Any]], [default=None]
@@ -119,20 +124,15 @@ class GreedyMultiCatBoost(BaseCatBoostModel):
             x_val = [val_size, max_train_horizon, d_size]
         :param y_val: np.ndarray
             y_val = [val_size, max_pred_horizon, d_size]
-        :return:
         """
 
         for row_ind, regressor in enumerate(self.regressors):
             eval_set = (
-                (x_val[:, 0, :], y_val[:, 0, row_ind])
-                if x_val is not None or y_val is not None
+                (x_val, y_val[:, row_ind])
+                if x_val is not None and y_val is not None
                 else None
             )
-            regressor.fit(
-                X=x_train[:, 0, :],
-                y=y_train[:, 0, row_ind],
-                eval_set=eval_set,
-            )
+            regressor.fit(X=x_train, y=y_train[:, row_ind], eval_set=eval_set)
 
     def predict(self, x_test: np.ndarray) -> np.ndarray:
         """
@@ -147,7 +147,7 @@ class GreedyMultiCatBoost(BaseCatBoostModel):
         return np.transpose(
             np.array(
                 [
-                    regressor.predict(x_test[:, 0, :])
+                    regressor.predict(x_test[:, :])
                     for regressor in self.regressors
                 ],
             ),
