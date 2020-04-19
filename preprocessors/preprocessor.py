@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from torch.utils.data import DataLoader, TensorDataset
 from typing import Optional
 
@@ -95,8 +96,8 @@ class Preprocessor:
         """
 
         return DataLoader(
-            dataset=TensorDataset(self.x_train, self.y_train),
-            shuffle=True,
+            dataset=TensorDataset(torch.tensor(self.x_train), torch.tensor(self.y_train)),
+            shuffle=False,
             batch_size=train_batch_size,
         )
 
@@ -110,7 +111,7 @@ class Preprocessor:
         """
 
         return DataLoader(
-            dataset=TensorDataset(self.x_val, self.y_val),
+            dataset=TensorDataset(torch.tensor(self.x_val), torch.tensor(self.y_val)),
             shuffle=False,
             batch_size=val_batch_size,
         )
@@ -125,7 +126,7 @@ class Preprocessor:
         """
 
         return DataLoader(
-            dataset=TensorDataset(self.x_test, self.y_test),
+            dataset=TensorDataset(torch.tensor(self.x_test), torch.tensor(self.y_test)),
             shuffle=False,
             batch_size=test_batch_size,
         )
