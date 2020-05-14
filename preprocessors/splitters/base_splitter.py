@@ -108,4 +108,5 @@ class Splitter:
                     np.newaxis, :, :,
                 ]
                 y = np.concatenate((y, new_elem))
+
         return y

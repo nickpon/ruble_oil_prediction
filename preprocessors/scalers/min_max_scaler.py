@@ -1,3 +1,4 @@
+import datetime
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from typing import Tuple
@@ -21,11 +22,25 @@ class MinMaxScalerData(BaseScaler):
         self.scaler = MinMaxScaler(feature_range=feature_range)
 
     def __call__(self, dataset: np.ndarray) -> np.ndarray:
-        train = dataset[: self.train_size, :]
-        test = dataset[self.train_size :, :]
+        self.params['d_size'] = dataset.shape[1]
+
+        train = dataset[: self.train_size, :-1]
+        test = dataset[self.train_size :, :-1]
+
         train = self.scaler.fit_transform(train)
         test = self.scaler.transform(test)
-        return np.concatenate((train, test))
+        data = np.concatenate((train, test))
+
+        dates = np.array(
+            list(
+                map(
+                    lambda x: datetime.datetime.strptime(x, '%m/%d/%y'),
+                    dataset[:, -1],
+                ),
+            ),
+        )[:, np.newaxis]
+
+        return np.concatenate((data, dates), axis=1)
 
     def inverse_transform(self, dataset: np.ndarray) -> np.ndarray:
         """
@@ -36,4 +51,23 @@ class MinMaxScalerData(BaseScaler):
         :return: np.ndarray
         """
 
-        return self.scaler.inverse_transform(dataset)
+        return self.scaler.inverse_transform(dataset[:, :-1])
+
+    def inverse_transform_target(self, dataset: np.ndarray) -> np.ndarray:
+        """
+        Undoes transformation, gets the initial values for the first axis
+        (target) back.
+
+        :param dataset: np.ndarray
+            Scaled by this very scaler dataset.
+        :return: np.ndarray
+        """
+
+        ans = np.concatenate(
+            (
+                np.array(dataset)[:, np.newaxis],
+                np.zeros((dataset.shape[0], self.params['d_size'] - 2)),
+            ),
+            axis=1,
+        )
+        return self.scaler.inverse_transform(ans)[:, 0]

@@ -18,3 +18,6 @@ class BaseScaler:
 
     def inverse_transform(self, dataset: np.ndarray) -> np.ndarray:
         raise NotImplementedError()
+
+    def inverse_transform_target(self, dataset: np.ndarray) -> np.ndarray:
+        raise NotImplementedError()

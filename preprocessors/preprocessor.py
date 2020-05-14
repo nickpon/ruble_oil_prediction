@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from typing import Optional
+from typing import Callable, Optional
 
 from utils import get_device
 
@@ -20,6 +20,8 @@ class Preprocessor:
             max_pred_horizon: int,
             max_train_horizon: int,
             d_size: int,
+            extrapolator_x: Callable,
+            extrapolator_y: Callable,
     ):
         """
         Preprocessor class that makes data splits and scaling over the dataset
@@ -34,11 +36,20 @@ class Preprocessor:
             Number of maximum train horizon for each period of time.
         :param d_size:
             Dimensions (number of rows) to explore.
+        :param extrapolator_x: Callable
+            Function to preprocess x_part of data. E.g. sparse, flat_piecewise,
+            linear_piecewise).
+        :param extrapolator_y: Callable
+            Function to preprocess y_part of data. E.g. sparse, flat_piecewise,
+            linear_piecewise).
         """
 
         self.dataset = dataset[:, :d_size]
         self.max_pred_horizon = max_pred_horizon
         self.max_train_horizon = max_train_horizon
+        self.extrapolator_x = extrapolator_x
+        self.extrapolator_y = extrapolator_y
+
         self.device = get_device()
 
         self.scaler = None
@@ -67,7 +78,7 @@ class Preprocessor:
         """
 
         if self.scaler is None:
-            return self.dataset
+            return self.dataset[:, :-1]
         return self.scaler.inverse_transform(self.dataset)
 
     def plot_row(self, row: int):
@@ -95,8 +106,12 @@ class Preprocessor:
         :return: DataLoader
         """
 
+        # TODO:
         return DataLoader(
-            dataset=TensorDataset(torch.tensor(self.x_train), torch.tensor(self.y_train)),
+            dataset=TensorDataset(
+                torch.tensor(self.x_train).float(),
+                torch.tensor(self.y_train).float(),
+            ),
             shuffle=False,
             batch_size=train_batch_size,
         )
@@ -110,8 +125,12 @@ class Preprocessor:
         :return: DataLoader
         """
 
+        # TODO:
         return DataLoader(
-            dataset=TensorDataset(torch.tensor(self.x_val), torch.tensor(self.y_val)),
+            dataset=TensorDataset(
+                torch.tensor(self.x_val).float(),
+                torch.tensor(self.y_val).float(),
+            ),
             shuffle=False,
             batch_size=val_batch_size,
         )
@@ -125,8 +144,12 @@ class Preprocessor:
         :return: DataLoader
         """
 
+        # TODO:
         return DataLoader(
-            dataset=TensorDataset(torch.tensor(self.x_test), torch.tensor(self.y_test)),
+            dataset=TensorDataset(
+                torch.tensor(self.x_test).float(),
+                torch.tensor(self.y_test).float(),
+            ),
             shuffle=False,
             batch_size=test_batch_size,
         )
@@ -213,3 +236,53 @@ class Preprocessor:
                 max_train_horizon=self.max_train_horizon,
             )()
         )
+
+    def get_x_part(self, name: str, train_horizon: int) -> np.ndarray:
+        """
+        Get the needed x_part of the splitted preprocessed dataset. Also applies
+        extrapolation by the function defined in constructor.
+
+        :param name: str
+            Name of the part to get (train, val, test).
+        :param train_horizon: int
+            Number of timestamps to predict on.
+        """
+
+        if name == 'train':
+            x_data = self.x_train
+            y_data = self.y_train
+        elif name == 'val':
+            if self.x_val is None:
+                raise Exception('Validation part is not defined.')
+            x_data = self.x_val
+            y_data = self.y_val
+        else:
+            x_data = self.x_test
+            y_data = self.y_test
+
+        return self.extrapolator_x(x_data, y_data, train_horizon)
+
+    def get_y_part(self, name: str, pred_horizon: int) -> np.ndarray:
+        """
+        Get the needed y_part of the splitted preprocessed dataset. Also applies
+        extrapolation by the function defined in constructor.
+
+        :param name: str
+            Name of the part to get (train, val, test).
+        :param pred_horizon: int
+            Number of timestamps to make prediction for.
+        """
+
+        if name == 'train':
+            x_data = self.x_train
+            y_data = self.y_train
+        elif name == 'val':
+            if self.x_val is None:
+                raise Exception('Validation part is not defined.')
+            x_data = self.x_val
+            y_data = self.y_val
+        else:
+            x_data = self.x_test
+            y_data = self.y_test
+
+        return self.extrapolator_y(x_data, y_data, pred_horizon)

@@ -1,3 +1,4 @@
+from datetime import date
 import itertools
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,8 +15,12 @@ class Evaluator:
             self,
             regressor: Callable,
             preprocessor: Preprocessor,
-            function_x: Callable,
-            function_y: Callable,
+            function_x_train: Callable,
+            function_y_train: Callable,
+            function_x_val: Callable,
+            function_y_val: Callable,
+            function_x_test: Callable,
+            function_y_test: Callable,
             train_horizons: List[int],
             prediction_horizons: List[int],
             metric: Callable,
@@ -31,21 +36,30 @@ class Evaluator:
             Instance of BaseCatBoostModel class.
         :param preprocessor: Preprocessor
             Instance of Preprocessor class.
-        :param function_x: Callable
-            Function to reshape X_part of dataset.
-        :param function_y: Callable
-            Function to reshape y_part of dataset.
+        :param function_x_train: Callable
+            Function to reshape train x_part of dataset.
+        :param function_y_train: Callable
+            Function to reshape train y_part of dataset.
+        :param function_x_val: Callable
+            Function to reshape val x_part of dataset.
+        :param function_y_val: Callable
+            Function to reshape val y_part of dataset.
+        :param function_x_test: Callable
+            Function to reshape test x_part of dataset.
+        :param function_y_test: Callable
+            Function to reshape test y_part of dataset.
         :param train_horizons: int
             Number of train horizon for each period of time.
         :param prediction_horizons:
             Number of prediction horizon for each period of time.
         :param metric: Callable
-            Function to evaluate metric.
+            Function to evaluate corresponding metric.
         :param metric_name: str
             Name of metric function.
         :param loss_function: str
             Name of loss function to use in CatBoost estimator.
-        :param grid_search_params: Optional[Dict[str, List[Any]]], [default=None]
+        :param grid_search_params: Optional[Dict[str, List[Any]]],
+            [default=None]
             Params to perform grid-serach over.
         :param use_gpu: bool, [default=False]
             Flag that indicates whether use use_gpu or not.
@@ -53,8 +67,12 @@ class Evaluator:
 
         self.regressor = regressor
         self.preprocessor = preprocessor
-        self.function_x = function_x
-        self.function_y = function_y
+        self.function_x_train = function_x_train
+        self.function_y_train = function_y_train
+        self.function_x_val = function_x_val
+        self.function_y_val = function_y_val
+        self.function_x_test = function_x_test
+        self.function_y_test = function_y_test
         self.train_horizons = train_horizons
         self.prediction_horizons = prediction_horizons
         self.metric = metric
@@ -96,17 +114,17 @@ class Evaluator:
             dimension=pred_horizon,
         )
         cur_regressor.fit(
-            x_train=self.function_x(
-                self.preprocessor.x_train[:, -train_horizon:, :],
+            x_train=self.function_x_train(
+                self.preprocessor.get_x_part('train', train_horizon),
             ),
-            y_train=self.function_y(
-                self.preprocessor.y_train[:, :pred_horizon, :],
+            y_train=self.function_y_train(
+                self.preprocessor.get_y_part('train', pred_horizon)[0],
             ),
-            x_val=self.function_x(
-                self.preprocessor.x_val[:, -train_horizon:, :],
+            x_val=self.function_x_val(
+                self.preprocessor.get_x_part('val', train_horizon),
             ),
-            y_val=self.function_y(
-                self.preprocessor.y_val[:, :pred_horizon, :],
+            y_val=self.function_y_val(
+                self.preprocessor.get_y_part('val', pred_horizon)[0],
             ),
         )
         return cur_regressor
@@ -117,29 +135,44 @@ class Evaluator:
             train_horizon: int,
             pred_horizon: int,
     ) -> (int, float):
-        ans = [
-            self.metric(
-                y_true=model.predict(
-                    x_test=self.function_x(
-                        self.preprocessor.x_val[:, -train_horizon:, :],
-                    ),
-                ),
-                y_pred=self.function_y(
-                    self.preprocessor.y_val[:, :pred_horizon, :],
-                ),
+        prediction = model.predict(
+            x_test=self.function_x_val(
+                self.preprocessor.get_x_part('val', train_horizon),
             ),
-        ]
+        )
+        y_val, dates_val = self.preprocessor.get_y_part('val', pred_horizon)
+
+        y_val_work_days = []
+        for ind, y_elem in enumerate(y_val):
+            y_elements = []
+            for num, value in enumerate(y_elem):
+                if date.weekday(dates_val[ind][num]) not in [5, 6]:
+                    y_elements.append(value)
+            y_val_work_days.append(
+                self.function_y_val(np.array(y_elements)[np.newaxis, :, :]),
+            )
+        y_val_work_days = np.array(y_val_work_days)
+
+        if len(y_val_work_days.shape) == 3:
+            y_val_work_days = y_val_work_days.squeeze(axis=1)
+
+            pred_val_work_days = []
+            for ind, y_elem in enumerate(prediction):
+                y_elements = []
+                for num, value in enumerate(y_elem):
+                    if date.weekday(dates_val[ind][num]) not in [5, 6]:
+                        y_elements.append(value)
+                pred_val_work_days.append(y_elements)
+            prediction = np.array(pred_val_work_days)
+
+        print(y_val_work_days.shape)
+        print(prediction.shape)
+
+        ans = [self.metric(y_pred=prediction, y_true=y_val_work_days)]
         for k in range(1, 100):
             ans.append(
                 self.metric(
-                    y_true=model.predict(
-                        x_test=self.function_x(
-                            self.preprocessor.x_val[:, -train_horizon:, :],
-                        ),
-                    )[k:],
-                    y_pred=self.function_y(
-                        self.preprocessor.y_val[:, :pred_horizon, :],
-                    )[:-k],
+                    y_pred=prediction[k:], y_true=y_val_work_days[:-k],
                 ),
             )
         return ans.index(min(ans)), min(ans)
@@ -215,26 +248,87 @@ class Evaluator:
                     self.best_params[train_hor][pred_hor],
                 )
 
-    def form_table(self):
+    def form_result_table(
+            self,
+            metric_names: List[str],
+            metrics: List[Callable],
+            part: str,
+            is_real_data: bool,
+    ):
         """
-        Form result table for each parameters.
+        Print result table with values of metric for the best estimators.
+
+        :param metric_names: List[str]
+            Names of metric functions.
+        :param metrics: List[Callable]
+            Functions to evaluate corresponding metrics.
+        :param part: str
+            Name of the part to get (train, val, test).
+        :param is_real_data:
+            Whether to evaluate on real data or preprocessed.
         """
 
-        print('Metric:', self.metric_name)
+        assert len(metric_names) == len(metrics)
+
         print('Loss function:', self.loss_function)
-        data = []
-        for train_hor in self.train_horizons:
-            row = []
-            for pred_hor in self.prediction_horizons:
-                row.append(self.metric_values[train_hor][pred_hor])
-            data.append(row)
-        print(
-            pd.DataFrame(
-                data=data,
-                index=pd.Index(self.prediction_horizons, 'cols'),
-                columns=pd.Index(self.train_horizons, 'rows'),
-            ),
-        )
+
+        for ind in range(len(metrics)):
+            print('Metric:', metric_names[ind])
+
+            data = []
+            for train_hor in self.train_horizons:
+                row = []
+                for pred_hor in self.prediction_horizons:
+                    model = self.best_model[train_hor][pred_hor]
+                    if part == 'train':
+                        x_test = self.function_x_train(
+                            self.preprocessor.get_x_part('train', train_hor),
+                        )
+                        actual = self.function_y_train(
+                            self.preprocessor.get_y_part('train', pred_hor)[0],
+                        )
+                    elif part == 'val':
+                        x_test = self.function_x_val(
+                            self.preprocessor.get_x_part('val', train_hor),
+                        )
+                        actual = self.function_y_val(
+                            self.preprocessor.get_y_part('val', pred_hor)[0],
+                        )
+                    else:
+                        x_test = self.function_x_test(
+                            self.preprocessor.get_x_part('test', train_hor),
+                        )
+                        actual = self.function_y_test(
+                            self.preprocessor.get_y_part('test', pred_hor)[0],
+                        )
+                    predicted = model.predict(x_test=x_test)
+                    if is_real_data:
+                        actual = (
+                            self.preprocessor.scaler.inverse_transform_target(
+                                actual,
+                            )
+                        )
+                        predicted = (
+                            self.preprocessor.scaler.inverse_transform_target(
+                                predicted,
+                            )
+                        )
+                    if self.shift[train_hor][pred_hor] != 0:
+                        actual = actual[: -self.shift[train_hor][pred_hor]]
+                        predicted = predicted[
+                            self.shift[train_hor][pred_hor] :
+                        ]
+                    row.append(metrics[ind](actual, predicted))
+                data.append(row)
+
+            print(
+                pd.DataFrame(
+                    data=data,
+                    index=pd.Index(self.train_horizons, 'cols'),
+                    columns=pd.Index(self.prediction_horizons, 'rows'),
+                ),
+            )
+            print('_____________________')
 
     def plot_union(
             self,
@@ -260,16 +354,16 @@ class Evaluator:
             end_ind = self.preprocessor.dataset.shape[0]
         model = self.best_model[train_horizon][pred_horizon]
         predicted = model.predict(
-            x_test=self.function_x(
-                self.preprocessor.x_train[:, -train_horizon:, :],
+            x_test=self.function_x_train(
+                self.preprocessor.get_x_part('train', train_horizon),
             ),
         )
         predicted = np.concatenate(
             [
                 predicted,
                 model.predict(
-                    x_test=self.function_x(
-                        self.preprocessor.x_val[:, -train_horizon:, :],
+                    x_test=self.function_x_val(
+                        self.preprocessor.get_x_part('val', train_horizon),
                     ),
                 ),
             ],
@@ -278,8 +372,8 @@ class Evaluator:
             [
                 predicted,
                 model.predict(
-                    x_test=self.function_x(
-                        self.preprocessor.x_test[:, -train_horizon:, :],
+                    x_test=self.function_x_test(
+                        self.preprocessor.get_x_part('test', train_horizon),
                     ),
                 ),
             ],
@@ -287,26 +381,39 @@ class Evaluator:
         predicted = predicted[self.shift[train_horizon][pred_horizon] :]
         predicted = predicted[start_ind:end_ind]
 
-        actual = self.function_y(
-            self.preprocessor.y_train[:, :pred_horizon, :],
+        actual = self.function_y_train(
+            self.preprocessor.get_y_part('train', pred_horizon)[0],
         )
         actual = np.concatenate(
             [
                 actual,
-                self.function_y(self.preprocessor.y_val[:, :pred_horizon, :]),
+                self.function_y_val(
+                    self.preprocessor.get_y_part('val', pred_horizon)[0],
+                ),
             ],
         )
         actual = np.concatenate(
             [
                 actual,
-                self.function_y(self.preprocessor.y_test[:, :pred_horizon, :]),
+                self.function_y_test(
+                    self.preprocessor.get_y_part('test', pred_horizon)[0],
+                ),
             ],
         )
-        actual = actual[: -self.shift[train_horizon][pred_horizon]]
+        actual = actual[
+            : actual.shape[0] - self.shift[train_horizon][pred_horizon]
+        ]
         actual = actual[start_ind:end_ind]
-
-        plt.plot(actual, label='Actual')
-        plt.plot(predicted, label='Predicted')
+        plt.plot(
+            [i + start_ind for i in range(len(actual))],
+            self.preprocessor.scaler.inverse_transform_target(actual),
+            label='Actual',
+        )
+        plt.plot(
+            [i + start_ind for i in range(len(actual))],
+            self.preprocessor.scaler.inverse_transform_target(predicted),
+            label='Predicted',
+        )
         if start_ind < self.preprocessor.x_train.shape[0] < end_ind:
             plt.axvline(x=self.preprocessor.x_train.shape[0])
         if (
@@ -322,6 +429,7 @@ class Evaluator:
         plt.legend()
         plt.show()
 
+    # TODO:
     def plot_multi(
             self, train_horizon: int, pred_horizon: int, start_ind: int,
     ):
@@ -341,43 +449,48 @@ class Evaluator:
         model = self.best_model[train_horizon][pred_horizon]
 
         if start_ind < train_size:
-            train = self.function_x(
-                self.preprocessor.x_train[:, -train_horizon:, :],
+            x_part = self.preprocessor.get_x_part('train', train_horizon)
+            predicted = self.preprocessor.scaler.inverse_transform_target(
+                model.predict(x_test=self.function_x_train(x_part))[start_ind],
             )
-            predicted = model.predict(x_test=train)[
-                start_ind + self.shift[train_horizon][pred_horizon]
-            ]
-            actual = self.function_y(
-                self.preprocessor.y_train[:, :pred_horizon, :],
-            )[start_ind]
-            train = train[start_ind]
+            actual = self.preprocessor.scaler.inverse_transform_target(
+                self.function_y_train(
+                    self.preprocessor.get_y_part('train', pred_horizon)[0],
+                )[start_ind],
+            )
+            train = self.preprocessor.scaler.inverse_transform_target(
+                x_part[start_ind, :, 0],
+            )
         elif train_size <= start_ind < train_size + val_size:
-            train = self.function_x(
-                self.preprocessor.x_val[:, -train_horizon:, :],
+            x_part = self.preprocessor.get_x_part('val', train_horizon)
+            predicted = self.preprocessor.scaler.inverse_transform_target(
+                model.predict(x_test=self.function_x_val(x_part))[
+                    start_ind - train_size
+                ],
             )
-            predicted = model.predict(x_test=train)[
-                start_ind
-                - train_size
-                + self.shift[train_horizon][pred_horizon]
-            ]
-            actual = self.function_y(
-                self.preprocessor.y_val[:, :pred_horizon, :],
-            )[start_ind - train_size]
-            train = train[start_ind - train_size]
+            actual = self.preprocessor.scaler.inverse_transform_target(
+                self.function_y_val(
+                    self.preprocessor.get_y_part('val', pred_horizon)[0],
+                )[start_ind - train_size],
+            )
+            train = self.preprocessor.scaler.inverse_transform_target(
+                x_part[start_ind - train_size, :, 0],
+            )
         else:
-            train = self.function_x(
-                self.preprocessor.x_test[:, -train_horizon:, :],
+            x_part = self.preprocessor.get_x_part('test', train_horizon)
+            predicted = self.preprocessor.scaler.inverse_transform_target(
+                model.predict(x_test=self.function_x_test(x_part))[
+                    start_ind - train_size - val_size
+                ],
             )
-            predicted = model.predict(x_test=train)[
-                start_ind
-                - train_size
-                - val_size
-                + self.shift[train_horizon][pred_horizon]
-            ]
-            actual = self.function_y(
-                self.preprocessor.y_test[:, :pred_horizon, :],
-            )[start_ind - train_size - val_size]
-            train = train[start_ind - train_size - val_size]
+            actual = self.preprocessor.scaler.inverse_transform_target(
+                self.function_y_test(
+                    self.preprocessor.get_y_part('test', pred_horizon)[0],
+                )[start_ind - train_size - val_size],
+            )
+            train = self.preprocessor.scaler.inverse_transform_target(
+                x_part[start_ind - train_size - val_size, :, 0],
+            )
 
         plt.plot(np.concatenate([train, actual]), label='Actual')
         plt.plot(np.concatenate([train, predicted]), label='Predicted')
