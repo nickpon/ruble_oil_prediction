@@ -97,7 +97,12 @@ class Preprocessor:
             plt.axvline(x=self.x_train.shape[0] + self.x_val.shape[0])
         plt.show()
 
-    def get_train_dataloader(self, train_batch_size: int = 128) -> DataLoader:
+    def get_train_dataloader(
+            self,
+            train_horizon: int,
+            pred_horizon: int,
+            train_batch_size: int = 128,
+    ) -> DataLoader:
         """
         Form torch Dataloder on train data.
 
@@ -106,17 +111,32 @@ class Preprocessor:
         :return: DataLoader
         """
 
-        # TODO:
         return DataLoader(
             dataset=TensorDataset(
-                torch.tensor(self.x_train).float(),
-                torch.tensor(self.y_train).float(),
+                # torch.tensor(self.x_train[:, :, :-1].astype(np.float64)).float(),
+                # torch.tensor(self.y_train[:, :, :-1].astype(np.float64)).float(),
+                torch.tensor(
+                    self.get_x_part(
+                        name='train', train_horizon=train_horizon,
+                    ).astype(np.float64),
+                ).float(),
+                torch.tensor(
+                    self.get_y_part(
+                        name='train', pred_horizon=pred_horizon,
+                    )[0].astype(np.float64)
+                ).float(),
             ),
             shuffle=False,
             batch_size=train_batch_size,
+            drop_last=True,
         )
 
-    def get_val_dataloader(self, val_batch_size: int = 128) -> DataLoader:
+    def get_val_dataloader(
+            self,
+            train_horizon: int,
+            pred_horizon: int,
+            val_batch_size: int = 128,
+    ) -> DataLoader:
         """
         Form torch Dataloder on train data.
 
@@ -125,17 +145,31 @@ class Preprocessor:
         :return: DataLoader
         """
 
-        # TODO:
         return DataLoader(
             dataset=TensorDataset(
-                torch.tensor(self.x_val).float(),
-                torch.tensor(self.y_val).float(),
+                # torch.tensor(self.x_val[:, :, :-1].astype(np.float64)).float(),
+                # torch.tensor(self.y_val[:, :, :-1].astype(np.float64)).float(),
+                torch.tensor(
+                    self.get_x_part(
+                        name='val', train_horizon=train_horizon,
+                    ).astype(np.float64),
+                ).float(),
+                torch.tensor(
+                    self.get_y_part(
+                        name='val', pred_horizon=pred_horizon,
+                    )[0].astype(np.float64)
+                ).float(),
             ),
             shuffle=False,
             batch_size=val_batch_size,
+            drop_last=True,
         )
 
-    def get_test_dataloader(self, test_batch_size: int = 128) -> DataLoader:
+    def get_test_dataloader( self,
+            train_horizon: int,
+            pred_horizon: int,
+            test_batch_size: int = 128,
+    ) -> DataLoader:
         """
         Form torch Dataloder on train data.
 
@@ -144,14 +178,24 @@ class Preprocessor:
         :return: DataLoader
         """
 
-        # TODO:
         return DataLoader(
             dataset=TensorDataset(
-                torch.tensor(self.x_test).float(),
-                torch.tensor(self.y_test).float(),
+                # torch.tensor(self.x_test[:, :, :-1].astype(np.float64)).float(),
+                # torch.tensor(self.y_test[:, :, :-1].astype(np.float64)).float(),
+                torch.tensor(
+                    self.get_x_part(
+                        name='test', train_horizon=train_horizon,
+                    ).astype(np.float64),
+                ).float(),
+                torch.tensor(
+                    self.get_y_part(
+                        name='test', pred_horizon=pred_horizon,
+                    )[0].astype(np.float64)
+                ).float(),
             ),
             shuffle=False,
             batch_size=test_batch_size,
+            drop_last=True,
         )
 
     def train_test_split(

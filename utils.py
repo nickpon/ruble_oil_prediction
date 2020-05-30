@@ -13,6 +13,8 @@ def get_device() -> torch.device:
 
 
 def mape(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray:
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
     return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
 
